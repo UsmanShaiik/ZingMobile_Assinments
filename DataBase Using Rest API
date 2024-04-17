@@ -1,0 +1,327 @@
+{
+  "user1": {
+    "id":1,
+    "firstname":"Munonye",
+    "lastname":"Kindson",
+    "email":"kany@gmail.com",
+    "city":"kadapa"
+  },
+
+  "user2":  {
+    "id":2,
+    "firstname":"Imolode",
+    "lastname":"Saffron",
+    "email":"saffron@gmail.com",
+    "city":"ongole"
+  },
+
+  "user3":  {
+    "id":3,
+    "firstname":"Munonyes",
+    "lastname":"Othniel",
+    "email":"othniel@gmail.com",
+    "city":"nuzvid"
+  },
+
+  "user4": {
+    "id":4,
+    "firstname":"Yuba",
+    "lastname":"Oleander",
+    "email":"oleander@gmail.com",
+    "city":"Srikakulam"
+  }
+}
+
+
+// app.js
+const express = require('express');
+const app = express();
+const db = require('./db');
+
+// Middleware to check user roles
+const checkRole = (req, res, next) => {
+    const role = req.headers['role']; // Assuming the role is provided in the header
+    
+    // Check if the role is valid
+    if (role === 'super_admin' || role === 'admin' || role === 'teacher' || role === 'student') {
+        // If the role is valid, proceed to the next middleware
+        next();
+    } else {
+        // If the role is invalid, send a 403 Forbidden response
+        res.status(403).json({ error: 'Unauthorized access' });
+    }
+};
+
+// Endpoint to get users (READ operation)
+app.get('/getUsers', checkRole, function(req, res){
+    const role = req.headers['role'];
+    if (role === 'super_admin' || role === 'admin') {
+        // Super admin and admin can access all users
+        db.query('SELECT * FROM users', function (error, results, fields) {
+            if (error) {
+                console.error('Error fetching users from database: ' + error);
+                res.status(500).json({ error: 'Error fetching users from database' });
+                return;
+            }
+            console.log('Fetched users from database: ', results);
+            res.json(results);
+        });
+    } else if (role === 'teacher') {
+        // Teacher can access users of a particular section
+        const section = req.query.section; // Assuming the section is provided in the query parameter
+        db.query('SELECT * FROM users WHERE section = ?', [section], function (error, results, fields) {
+            if (error) {
+                console.error('Error fetching users from database: ' + error);
+                res.status(500).json({ error: 'Error fetching users from database' });
+                return;
+            }
+            console.log('Fetched users from database for section ' + section + ': ', results);
+            res.json(results);
+        });
+    } else if (role === 'student') {
+        // Student can only access their own data
+        const userId = req.headers['user-id']; // Assuming the user ID is provided in the header
+        db.query('SELECT * FROM users WHERE id = ?', [userId], function (error, results, fields) {
+            if (error) {
+                console.error('Error fetching user from database: ' + error);
+                res.status(500).json({ error: 'Error fetching user from database' });
+                return;
+            }
+            console.log('Fetched user from database for user ID ' + userId + ': ', results);
+            res.json(results);
+        });
+    }
+});
+
+// Endpoint to create user (WRITE operation)
+app.post('/createUser', checkRole, function(req, res){
+    const role = req.headers['role'];
+    if (role === 'super_admin' || role === 'admin') {
+        // Only super admin and admin can create users
+        const newUser = req.body; // Assuming the new user data is provided in the request body
+        db.query('INSERT INTO users SET ?', newUser, function (error, results, fields) {
+            if (error) {
+                console.error('Error creating user: ' + error);
+                res.status(500).json({ error: 'Error creating user' });
+                return;
+            }
+            console.log('User created successfully');
+            res.status(201).json({ message: 'User created successfully' });
+        });
+    } else {
+        res.status(403).json({ error: 'Unauthorized access' });
+    }
+});
+
+// Endpoint to update user (UPDATE operation)
+app.put('/updateUser/:id', checkRole, function(req, res){
+    const role = req.headers['role'];
+    if (role === 'super_admin' || role === 'admin' || role === 'teacher') {
+        // Super admin, admin, and teacher can update users
+        const userId = req.params.id; // Assuming the user ID is provided in the URL parameter
+        const updatedUserData = req.body; // Assuming the updated user data is provided in the request body
+        db.query('UPDATE users SET ? WHERE id = ?', [updatedUserData, userId], function (error, results, fields) {
+            if (error) {
+                console.error('Error updating user: ' + error);
+                res.status(500).json({ error: 'Error updating user' });
+                return;
+            }
+            console.log('User updated successfully');
+            res.json({ message: 'User updated successfully' });
+        });
+    } else {
+        res.status(403).json({ error: 'Unauthorized access' });
+    }
+});
+
+// Endpoint to delete user (DELETE operation)
+app.delete('/deleteUser/:id', checkRole, function(req, res){
+    const role = req.headers['role'];
+    if (role === 'super_admin' || role === 'admin') {
+        // Only super admin and admin can delete users
+        const userId = req.params.id; // Assuming the user ID is provided in the URL parameter
+        db.query('DELETE FROM users WHERE id = ?', [userId], function (error, results, fields) {
+            if (error) {
+                console.error('Error deleting user: ' + error);
+                res.status(500).json({ error: 'Error deleting user' });
+                return;
+            }
+            console.log('User deleted successfully');
+            res.json({ message: 'User deleted successfully' });
+        });
+    } else {
+        res.status(403).json({ error: 'Unauthorized access' });
+    }
+});
+
+// Create a server to listen at port 8080
+const PORT = process.env.PORT || 8080;
+const server = app.listen(PORT, function(){
+    const host = server.address().address;
+    const port = server.address().port;
+    console.log("REST API demo app listening at http://%s:%s", host, port);
+});
+
+
+
+
+
+
+const { createPool } = require('mysql');
+
+const pool = createPool({
+    host: "localhost",
+    user: "root",
+    password: "",
+    database: "student_management",
+    connectionLimit: 10
+});
+
+// Function to insert user data into the registration table
+function insertUserData(userData) {
+    pool.getConnection((err, connection) => {
+        if (err) {
+            console.error('Error getting connection from pool: ' + err);
+            return;
+        }
+        
+        // Begin transaction
+        connection.beginTransaction((err) => {
+            if (err) {
+                console.error('Error beginning transaction: ' + err);
+                return connection.release();
+            }
+
+            // Perform insertion for each user data
+            userData.forEach(user => {
+                connection.query('INSERT INTO registration SET ?', user, (err, result) => {
+                    if (err) {
+                        console.error('Error inserting user data: ' + err);
+                        return connection.rollback(() => {
+                            console.error('Rolling back transaction');
+                            connection.release();
+                        });
+                    }
+                    console.log('Inserted user with ID:', result.insertId, 
+                        '- First Name:', user.firstname,
+                        '- Last Name:', user.lastname,
+                        '- Email:', user.email,
+                        '- City:', user.city);
+                });
+            });
+
+            // Commit transaction
+            connection.commit((err) => {
+                if (err) {
+                    console.error('Error committing transaction: ' + err);
+                    return connection.rollback(() => {
+                        console.error('Rolling back transaction');
+                        connection.release();
+                    });
+                }
+                console.log('Transaction successfully committed');
+                connection.release();
+            });
+        });
+    });
+}
+
+// Data to be inserted
+const userData = [
+    { firstname: "Munonye", lastname: "Kindson", email: "kany@gmail.com", city: "kadapa" },
+    { firstname: "Imolode", lastname: "Saffron", email: "saffron@gmail.com", city: "ongole" },
+    { firstname: "Munonyes", lastname: "Othniel", email: "othniel@gmail.com", city: "nuzvid" },
+    { firstname: "Yuba", lastname: "Oleander", email: "oleander@gmail.com", city: "Srikakulam" }
+];
+
+// Call the function to insert user data
+insertUserData(userData);
+
+
+
+
+
+
+
+
+const mysql = require('mysql');
+
+let pool;
+
+function handleDisconnect() {
+    pool = mysql.createPool({
+        connectionLimit: 10, // Adjust this based on your needs
+        host: 'actual_host',
+        user: 'actual_user',
+        password: 'actual_password',
+        database: 'actual_database_name'
+    });
+
+    pool.getConnection(function(err, connection) {
+        if (err) {
+            console.error('Error connecting to database: ' + err.stack);
+            setTimeout(handleDisconnect, 2000); // Reconnect after 2 seconds
+            return;
+        }
+        console.log('Connected to database as id ' + connection.threadId);
+
+        // Release the connection
+        connection.release();
+    });
+
+    pool.on('error', function(err) {
+        console.error('Database error: ' + err.message);
+        if (err.code === 'PROTOCOL_CONNECTION_LOST') {
+            handleDisconnect(); // Reconnect on connection loss
+        } else {
+            throw err;
+        }
+    });
+}
+
+handleDisconnect();
+
+module.exports = pool;
+
+
+
+
+
+
+
+var express = require('express'); // require the express framework
+var app = express();
+var mysql = require('mysql'); // require the mysql module
+
+// Create a connection to the MySQL database
+var connection = mysql.createConnection({
+    host: 'localhost',
+    user: 'your_database_user',
+    password: 'your_database_password',
+    database: 'your_database_name'
+});
+
+// Connect to the database
+connection.connect(function(err) {
+    if (err) {
+        console.error('Error connecting to database: ' + err.stack);
+        return;
+    }
+    console.log('Connected to database as id ' + connection.threadId);
+});
+
+// Endpoint to Get a list of users
+app.get('/getUsers', function(req, res){
+    connection.query('SELECT * FROM users', function (error, results, fields) {
+        if (error) throw error;
+        console.log('Fetched users from database: ', results);
+        res.json(results);
+    });
+});
+
+// Create a server to listen at port 8080
+var server = app.listen(8080, function(){
+    var host = server.address().address;
+    var port = server.address().port;
+    console.log("REST API demo app listening at http://%s:%s", host, port);
+});
